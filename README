@@ -1,0 +1,16 @@
+API Gateway Analytics Service
+
+Lightweight HTTP analytics service written in Go.
+
+Features:
+- HTTP endpoint monitoring
+- ClickHouse integration
+- request analytics collection
+- high-load ready architecture
+- load testing via k6
+
+Stack:
+- Go
+- ClickHouse
+- Docker Compose
+- k6
