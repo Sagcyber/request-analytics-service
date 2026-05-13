@@ -26,18 +26,18 @@ func main() {
 	})
 
 	if err != nil {
-		logger.Error("ClickHouse connection failed", slog.Any("error", err))
+		logger.Error("clickHouse connection failed", slog.Any("error", err))
 		os.Exit(1)
 	}
 
 	ctx := context.Background()
 
 	if err := conn.Ping(ctx); err != nil {
-		logger.Error("ClickHouse ping failed", slog.Any("error", err))
+		logger.Error("clickHouse ping failed", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	logger.Info("connected to Clickhouse")
+	logger.Info("connected to clickhouse")
 
 	createTableQuery := `
 	CREATE TABLE IF NOT EXISTS endpoint_analytics
@@ -48,7 +48,7 @@ func main() {
 	)
 	ENGINE = MergeTree()
 	ORDER BY (created_at)
-`
+	`
 
 	if err := conn.Exec(ctx, createTableQuery); err != nil {
 		logger.Error("failed to create table", slog.Any("error", err))
@@ -60,7 +60,29 @@ func main() {
 	r := chi.NewRouter()
 
 	r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
+		requestID := uint64(time.Now().UnixNano())
+		endpoint := r.URL.Path
+		now := time.Now()
+
+		insertQuery := `
+		INSERT INTO endpoint_analytics
+		(id, endpoint, created_at)
+		VALUES (?, ?, ?)
+		`
+		err := conn.Exec(
+			context.Background(),
+			insertQuery,
+			requestID,
+			endpoint,
+			now,
+		)
+
+		if err != nil {
+			logger.Error("failed to insert analytics", slog.Any("error", err))
+		}
+
 		w.Header().Set("Content-Type", "application/json")
+
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
