@@ -39,6 +39,24 @@ func main() {
 
 	logger.Info("connected to Clickhouse")
 
+	createTableQuery := `
+	CREATE TABLE IF NOT EXISTS endpoint_analytics
+	(
+	    id UInt64,
+	    endpoint String,
+	    created_at DateTime
+	)
+	ENGINE = MergeTree()
+	ORDER BY (created_at)
+`
+
+	if err := conn.Exec(ctx, createTableQuery); err != nil {
+		logger.Error("failed to create table", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	logger.Info("created table successfully")
+
 	r := chi.NewRouter()
 
 	r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
