@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package analytics;
 
-option go_package = "request-analytics-service/internal/pb";
+option go_package = "./internal/pb";
 
 message EventRequest {
   uint64 id = 1;
