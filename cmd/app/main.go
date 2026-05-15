@@ -7,37 +7,27 @@ import (
 	"os"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/jmoiron/sqlx"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	conn, err := clickhouse.Open(&clickhouse.Options{
-		Addr: []string{"localhost:9000"},
+	dsn := "clickhouse://default:password@localhost:9000/analytics"
 
-		Auth: clickhouse.Auth{
-			Database: "analytics",
-			Username: "default",
-			Password: "password",
-		},
-	})
-
+	db, err := sqlx.Connect("clickhouse", dsn)
 	if err != nil {
-		logger.Error("clickHouse connection failed", slog.Any("error", err))
+		logger.Error("failed to connect clickhouse", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
-
-	if err := conn.Ping(ctx); err != nil {
-		logger.Error("clickHouse ping failed", slog.Any("error", err))
-		os.Exit(1)
-	}
+	defer db.Close()
 
 	logger.Info("connected to clickhouse")
+
+	ctx := context.Background()
 
 	createTableQuery := `
 	CREATE TABLE IF NOT EXISTS endpoint_analytics
@@ -50,12 +40,13 @@ func main() {
 	ORDER BY (created_at)
 	`
 
-	if err := conn.Exec(ctx, createTableQuery); err != nil {
+	_, err = db.ExecContext(ctx, createTableQuery)
+	if err != nil {
 		logger.Error("failed to create table", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	logger.Info("created table successfully")
+	logger.Info("table initialized")
 
 	r := chi.NewRouter()
 
@@ -69,7 +60,7 @@ func main() {
 		(id, endpoint, created_at)
 		VALUES (?, ?, ?)
 		`
-		err := conn.Exec(
+		_, err := db.ExecContext(
 			context.Background(),
 			insertQuery,
 			requestID,
@@ -83,7 +74,9 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 
-		w.Write([]byte(`{"status":"ok"}`))
+		w.WriteHeader(http.StatusOK)
+
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	server := http.Server{
@@ -95,7 +88,8 @@ func main() {
 
 	logger.Info("server started", slog.String("addr", server.Addr))
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := server.ListenAndServe(); err != nil &&
+		err != http.ErrServerClosed {
 		logger.Error("server failed to start", slog.Any("error", err))
 		os.Exit(1)
 	}
