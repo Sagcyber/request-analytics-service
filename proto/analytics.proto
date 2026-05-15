@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package analytics;
+
+option go_package = "request-analytics-service/internal/pb";
+
+message EventRequest {
+  uint64 id = 1;
+  string endpoint = 2;
+  int64 timestamp = 3;
+}
+
+message EventResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+service AnalyticsService {
+  rpc LogEvent(EventRequest) returns (EventResponse);
+}
