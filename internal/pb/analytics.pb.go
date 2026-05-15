@@ -146,7 +146,7 @@ const file_proto_analytics_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage2Q\n" +
 	"\x10AnalyticsService\x12=\n" +
-	"\bLogEvent\x12\x17.analytics.EventRequest\x1a\x18.analytics.EventResponseB'Z%request-analytics-service/internal/pbb\x06proto3"
+	"\bLogEvent\x12\x17.analytics.EventRequest\x1a\x18.analytics.EventResponseB\x0fZ\r./internal/pbb\x06proto3"
 
 var (
 	file_proto_analytics_proto_rawDescOnce sync.Once
