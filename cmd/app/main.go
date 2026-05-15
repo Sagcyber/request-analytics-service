@@ -8,89 +8,116 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jmoiron/sqlx"
+
+	pb "request-analytics-service/internal/pb"
+
+	"google.golang.org/grpc"
+
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	logger := slog.New(
+		slog.NewJSONHandler(os.Stdout, nil),
+	)
+
 	slog.SetDefault(logger)
 
-	dsn := "clickhouse://default:password@localhost:9000/analytics"
+	conn, err := grpc.NewClient(
+		"localhost:50051",
 
-	db, err := sqlx.Connect("clickhouse", dsn)
-	if err != nil {
-		logger.Error("failed to connect clickhouse", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	defer db.Close()
-
-	logger.Info("connected to clickhouse")
-
-	ctx := context.Background()
-
-	createTableQuery := `
-	CREATE TABLE IF NOT EXISTS endpoint_analytics
-	(
-	    id UInt64,
-	    endpoint String,
-	    created_at DateTime
+		grpc.WithTransportCredentials(
+			insecure.NewCredentials(),
+		),
 	)
-	ENGINE = MergeTree()
-	ORDER BY (created_at)
-	`
 
-	_, err = db.ExecContext(ctx, createTableQuery)
 	if err != nil {
-		logger.Error("failed to create table", slog.Any("error", err))
+
+		logger.Error(
+			"failed to connect grpc server",
+			slog.Any("error", err),
+		)
+
 		os.Exit(1)
 	}
 
-	logger.Info("table initialized")
+	defer conn.Close()
+
+	analyticsClient := pb.NewAnalyticsServiceClient(conn)
 
 	r := chi.NewRouter()
 
 	r.Get("/status", func(w http.ResponseWriter, r *http.Request) {
-		requestID := uint64(time.Now().UnixNano())
-		endpoint := r.URL.Path
-		now := time.Now()
 
-		insertQuery := `
-		INSERT INTO endpoint_analytics
-		(id, endpoint, created_at)
-		VALUES (?, ?, ?)
-		`
-		_, err := db.ExecContext(
-			context.Background(),
-			insertQuery,
-			requestID,
-			endpoint,
-			now,
+		ctx, cancel := context.WithTimeout(
+			r.Context(),
+			3*time.Second,
+		)
+
+		defer cancel()
+
+		requestID := uint64(time.Now().UnixNano())
+
+		grpcRequest := &pb.EventRequest{
+			Id:        requestID,
+			Endpoint:  r.URL.Path,
+			Timestamp: time.Now().Unix(),
+		}
+
+		response, err := analyticsClient.LogEvent(
+			ctx,
+			grpcRequest,
 		)
 
 		if err != nil {
-			logger.Error("failed to insert analytics", slog.Any("error", err))
+
+			logger.Error(
+				"grpc request failed",
+				slog.Any("error", err),
+			)
+
+		} else {
+
+			logger.Info(
+				"analytics event sent",
+				slog.Bool("success", response.Success),
+			)
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(
+			"Content-Type",
+			"application/json",
+		)
 
 		w.WriteHeader(http.StatusOK)
 
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write(
+			[]byte(`{"status":"ok"}`),
+		)
 	})
 
 	server := http.Server{
-		Addr:         ":8080",
-		Handler:      r,
+		Addr:    ":8080",
+		Handler: r,
+
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
 
-	logger.Info("server started", slog.String("addr", server.Addr))
+	logger.Info(
+		"rest gateway started",
+		slog.String("addr", ":8080"),
+	)
 
 	if err := server.ListenAndServe(); err != nil &&
 		err != http.ErrServerClosed {
-		logger.Error("server failed to start", slog.Any("error", err))
+
+		logger.Error(
+			"server failed",
+			slog.Any("error", err),
+		)
+
 		os.Exit(1)
 	}
 }
